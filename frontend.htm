@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Capre Hade • Secure Login</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{background:#000;font-family:Arial,sans-serif;color:#fff;text-align:center;padding:20px;}
+        .container{background:#00f;padding:16px;}
+        h1{color:#fff;}
+        .moving-text{white-space:nowrap;display:inline-block;animation:scrollLeft 10s linear infinite;font-size:1.5rem;margin:20px 0;}
+        @keyframes scrollLeft{0%{transform:translateX(100%);}100%{transform:translateX(-100%);}}
+        .h2-wrapper{overflow:hidden;}
+        .service1{color:#FF6B6B;}.service2{color:#4ECDC4;}.service3{color:#FFE66D;}.service4{color:#95E77E;}
+        .separator{color:#fff;margin:0 10px;}
+        .welcome-message{font-size:30px;margin:40px 0 20px;}
+        form{text-align:center;}
+        input{padding:8px;margin:5px;border-radius:5px;border:none;}
+        input[type="submit"]{background:#00f;color:#fff;cursor:pointer;padding:10px 20px;}
+        input[type="submit"]:hover{background:#0000cd;}
+        .msg{margin:15px auto;padding:10px;max-width:300px;border-radius:5px;font-size:14px;display:none;}
+        .msg.error{background:#ff000033;color:#ff6b6b;display:block;}
+        .msg.success{background:#00ff0033;color:#95E77E;display:block;}
+        .register-link{margin:15px;color:#4ECDC4;cursor:pointer;text-decoration:underline;display:inline-block;}
+        .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);justify-content:center;align-items:center;}
+        .modal-content{background:#111;padding:30px;border-radius:10px;border:2px solid #00f;width:90%;max-width:350px;}
+        .modal-content h2{color:#00f;margin-bottom:20px;}
+        .modal-content input{width:100%;margin:8px 0;}
+        .modal-content button{background:#00f;color:#fff;padding:10px;border:none;border-radius:5px;cursor:pointer;width:100%;}
+        .close{float:right;cursor:pointer;font-size:28px;color:#fff;}
+        .close:hover{color:#f00;}
+    </style>
+</head>
+<body>
+<div class="container"><h1>Capre Hade</h1></div>
+<div class="h2-wrapper"><h2 class="moving-text"><span class="service1">Car services</span><span class="separator">|</span><span class="service2">Computer Services</span><span class="separator">|</span><span class="service3">Bulldozer / Land Crushing</span><span class="separator">|</span><span class="service4">Legal / Consultancy</span></h2></div>
+<p class="welcome-message">Welcome to Capre Hade where you can find all services</p>
+
+<form id="loginForm">
+    <input type="text" id="username" placeholder="Username" required autocomplete="username">
+    <input type="password" id="password" placeholder="Password" required autocomplete="current-password">
+    <input type="submit" value="Login">
+</form>
+<div class="register-link" id="showReg">Create account</div>
+<div id="msg" class="msg"></div>
+
+<div id="regModal" class="modal">
+    <div class="modal-content">
+        <span class="close" id="closeModal">&times;</span>
+        <h2>Register</h2>
+        <form id="regForm">
+            <input type="text" id="fullname" placeholder="Full Name" required>
+            <input type="email" id="email" placeholder="Email" required>
+            <input type="text" id="regUser" placeholder="Username" required>
+            <input type="password" id="regPass" placeholder="Password (min 4 chars)" required>
+            <input type="password" id="regConfirm" placeholder="Confirm Password" required>
+            <button type="submit">Register</button>
+        </form>
+    </div>
+</div>
+
+<script>
+// Minimal secure auth with MD5 hashing & regex validation
+const DB_KEY = 'capre_users';
+const SESSION_KEY = 'capre_session';
+
+// --- DB helpers ---
+const getUsers = () => JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+const saveUsers = (u) => localStorage.setItem(DB_KEY, JSON.stringify(u));
+const findUser = (key, val) => getUsers().find(u => u[key].toLowerCase() === val.toLowerCase());
+
+// --- Session ---
+const setSession = (u) => sessionStorage.setItem(SESSION_KEY, JSON.stringify(u));
+const getSession = () => JSON.parse(sessionStorage.getItem(SESSION_KEY));
+const clearSession = () => sessionStorage.removeItem(SESSION_KEY);
+
+// --- Validation regex ---
+const validName = (n) => /^[a-zA-Z\s]{2,50}$/.test(n);
+const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+const validUsername = (u) => /^[a-zA-Z0-9_]{3,20}$/.test(u);
+const validPass = (p) => p.length >= 4;
+
+// --- Message UI ---
+const msgDiv = document.getElementById('msg');
+const showMsg = (txt, type) => { msgDiv.textContent = txt; msgDiv.className = `msg ${type}`; setTimeout(() => msgDiv.style.display = 'none', 3000); msgDiv.style.display = 'block'; };
+
+// --- Hash password (MD5) ---
+const hash = (pw) => CryptoJS.MD5(pw).toString();
+
+// --- Register ---
+const register = (fullname, email, username, password, confirm) => {
+    if (!validName(fullname)) return 'Name: 2-50 letters only';
+    if (!validEmail(email)) return 'Invalid email';
+    if (!validUsername(username)) return 'Username: 3-20 letters/numbers/_';
+    if (!validPass(password)) return 'Password minimum 4 chars';
+    if (password !== confirm) return 'Passwords mismatch';
+    if (findUser('username', username)) return 'Username taken';
+    if (findUser('email', email)) return 'Email registered';
+    
+    const users = getUsers();
+    users.push({ id: Date.now(), fullname, email, username: username.toLowerCase(), md5: hash(password) });
+    saveUsers(users);
+    return true;
+};
+
+// --- Login ---
+const login = (username, password) => {
+    const user = findUser('username', username);
+    if (!user || user.md5 !== hash(password)) return false;
+    setSession({ fullname: user.fullname, username: user.username, email: user.email });
+    return true;
+};
+
+// --- Render Dashboard (your original style) ---
+const renderDashboard = (user) => {
+    document.body.innerHTML = `
+        <style>
+            *{margin:0;padding:0;box-sizing:border-box;}
+            body{background:#000;font-family:Arial,sans-serif;color:#fff;text-align:center;padding:50px;}
+            .card{background:rgba(0,0,255,0.2);padding:40px;border-radius:10px;max-width:600px;margin:auto;}
+            h1{color:#00f;margin-bottom:20px;}
+            .btn{display:inline-block;margin-top:20px;background:#00f;color:#fff;padding:10px 20px;border-radius:5px;cursor:pointer;border:none;}
+            .btn:hover{background:#0000cd;}
+            .logout{background:#dc2626;margin-left:10px;}
+        </style>
+        <div class="card">
+            <h1>Welcome, ${escapeHtml(user.fullname)}!</h1>
+            <p>Successfully logged in to Capre Hade.</p>
+            <p>We offer all the services you need!</p>
+            <button class="btn" onclick="logout()">Logout</button>
+            <button class="btn logout" onclick="goHome()">Back to Home</button>
+        </div>
+        <script>
+            function logout(){ sessionStorage.clear(); location.reload(); }
+            function goHome(){ window.location.href = window.location.pathname; }
+        <\/script>
+    `;
+};
+
+const escapeHtml = (s) => s.replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);
+
+// --- Check session ---
+if (getSession()) renderDashboard(getSession());
+
+// --- Event handlers ---
+document.getElementById('loginForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const user = document.getElementById('username').value.trim();
+    const pass = document.getElementById('password').value;
+    if (!user || !pass) return showMsg('Username & password required', 'error');
+    if (login(user, pass)) {
+        showMsg('Login successful!', 'success');
+        setTimeout(() => renderDashboard(getSession()), 800);
+    } else showMsg('Invalid credentials', 'error');
+});
+
+// --- Modal logic ---
+const modal = document.getElementById('regModal');
+document.getElementById('showReg')?.addEventListener('click', () => modal.style.display = 'flex');
+document.getElementById('closeModal')?.addEventListener('click', () => modal.style.display = 'none');
+window.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+
+document.getElementById('regForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const full = document.getElementById('fullname').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const user = document.getElementById('regUser').value.trim();
+    const pass = document.getElementById('regPass').value;
+    const conf = document.getElementById('regConfirm').value;
+    
+    const result = register(full, email, user, pass, conf);
+    if (result === true) {
+        showMsg('Account created! Please login.', 'success');
+        modal.style.display = 'none';
+        document.getElementById('username').value = user;
+        document.getElementById('password').value = '';
+    } else showMsg(result, 'error');
+});
+
+// Initialize empty DB if needed
+if (!localStorage.getItem(DB_KEY)) localStorage.setItem(DB_KEY, JSON.stringify([]));
+</script>
+</body>
+</html>
+```
